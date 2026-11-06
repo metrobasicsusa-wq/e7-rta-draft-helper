@@ -1,0 +1,473 @@
+<title>RTA 选人助手</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;900&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: a draft table. Board (two rows: us / them) and hero picker on the left, live advice on the right; stacks on phones. */
+:root {
+  --bg: #f3f4f7;
+  --panel: #ffffff;
+  --line: #dcdfe8;
+  --ink: #1b1f2e;
+  --muted: #646b80;
+  --me: #2f6fd8;
+  --me-soft: #e6eefc;
+  --foe: #c8414b;
+  --foe-soft: #fbe9ea;
+  --gold: #b8860b;
+  --gold-soft: #fdf3d8;
+  --good: #23824f;
+  --bad: #c0392b;
+  --fire: #e0573a; --ice: #3d8fd6; --wind: #3f9e5e; --light: #c9a227; --dark: #8b5cc7;
+  --f-display: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --f-body: system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11141d; --panel: #1a1e2b; --line: #2c3244; --ink: #e8eaf2; --muted: #9aa1b8;
+  --me: #6ea0ff; --me-soft: #1d2a47; --foe: #ff7b84; --foe-soft: #3a1f25;
+  --gold: #e6b84a; --gold-soft: #3a311a; --good: #4fd08a; --bad: #ff7a6b;
+  --fire: #ff7a5c; --ice: #6cb4ff; --wind: #5fd08a; --light: #f0cc55; --dark: #b48cff;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #11141d; --panel: #1a1e2b; --line: #2c3244; --ink: #e8eaf2; --muted: #9aa1b8;
+  --me: #6ea0ff; --me-soft: #1d2a47; --foe: #ff7b84; --foe-soft: #3a1f25;
+  --gold: #e6b84a; --gold-soft: #3a311a; --good: #4fd08a; --bad: #ff7a6b;
+  --fire: #ff7a5c; --ice: #6cb4ff; --wind: #5fd08a; --light: #f0cc55; --dark: #b48cff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-family: var(--f-display); font-weight: 900; font-size: 1.75rem; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+.meta { color: var(--muted); font-size: .85rem; }
+.meta b { font-family: var(--f-num); font-weight: 600; color: var(--ink); }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 1.05rem; margin: 0; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.left, .right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (min-width: 861px) { .right { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.spread { justify-content: space-between; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: .9rem; }
+.btn:hover { border-color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; font-size: .9rem; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.note { font-size: .85rem; color: var(--muted); }
+.example { background: var(--gold-soft); border: 1px solid var(--gold); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: .88rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+
+/* Board */
+.side { display: flex; flex-direction: column; gap: 6px; }
+.side-label { font-size: .8rem; font-weight: 700; letter-spacing: .08em; display: flex; gap: 8px; align-items: center; }
+.side.me .side-label { color: var(--me); }
+.side.foe .side-label { color: var(--foe); }
+.slots { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.slot {
+  position: relative; min-height: 58px; border: 1.5px dashed var(--line); border-radius: 8px; background: transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 2px; text-align: center; gap: 2px; min-width: 0;
+}
+.slot .tag { font-size: .66rem; color: var(--muted); letter-spacing: .04em; }
+.slot .nm { font-size: .8rem; font-weight: 600; line-height: 1.2; word-break: break-all; }
+.slot.pre { border-style: dashed; }
+.slot.filled { border-style: solid; }
+.side.me .slot.filled.pick { background: var(--me-soft); border-color: var(--me); }
+.side.foe .slot.filled.pick { background: var(--foe-soft); border-color: var(--foe); }
+.slot.filled.pre { background: var(--bg); border-color: var(--muted); }
+.slot.filled.pre .nm { text-decoration: line-through; text-decoration-color: var(--muted); }
+.slot.active { border: 2px solid var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.slot.banned::after { content: "禁"; position: absolute; top: 2px; right: 4px; font-size: .65rem; font-weight: 700; color: var(--bad); }
+.slot .x { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); font-size: .75rem; line-height: 1; display: none; padding: 0; }
+.slot.filled:hover .x, .slot.filled.active .x { display: block; }
+@media (hover: none) { .slot.filled .x { display: block; } }
+.divider { width: 1px; background: var(--line); }
+.turn { font-size: .9rem; padding: 8px 10px; border-radius: 8px; background: var(--bg); }
+.turn b { font-weight: 700; }
+.turn .me { color: var(--me); } .turn .foe { color: var(--foe); }
+.order { font-family: var(--f-num); font-size: .78rem; color: var(--muted); letter-spacing: .05em; }
+.order .me { color: var(--me); } .order .foe { color: var(--foe); }
+.order .now { text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
+
+/* Picker */
+.search { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; max-height: 330px; overflow-y: auto; padding: 2px; }
+.hero { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 6px 8px; text-align: left; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.hero:hover:not(:disabled) { border-color: var(--gold); }
+.hero:disabled { opacity: .35; cursor: not-allowed; }
+.hero .nm { font-size: .85rem; font-weight: 600; display: flex; align-items: center; gap: 5px; line-height: 1.25; }
+.hero .en { font-size: .68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero .st { font-family: var(--f-num); font-size: .7rem; color: var(--muted); }
+.hero.owned { box-shadow: inset 3px 0 0 var(--me); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
+.el-fire { background: var(--fire); } .el-ice { background: var(--ice); } .el-wind { background: var(--wind); } .el-light { background: var(--light); } .el-dark { background: var(--dark); }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; }
+
+/* Advice */
+.recs { display: flex; flex-direction: column; gap: 0; }
+.rec { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: 4px 10px; align-items: start; padding: 9px 0; border-top: 1px solid var(--line); }
+.rec:first-child { border-top: 0; }
+.rec .rk { font-family: var(--f-num); color: var(--muted); font-size: .85rem; padding-top: 1px; }
+.rec .who { min-width: 0; }
+.rec .who .nm { font-weight: 700; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rec .who .en { font-weight: 400; color: var(--muted); font-size: .75rem; }
+.rec .wr { font-family: var(--f-num); font-weight: 600; font-size: 1.05rem; text-align: right; }
+.rec .wr small { display: block; font-size: .68rem; font-weight: 500; color: var(--muted); }
+.rec button.use { grid-column: 3; justify-self: end; }
+.why { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip { font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.chip.up { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.chip.down { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.chip.info { color: var(--muted); }
+.mini { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.mini th { text-align: left; font-weight: 600; color: var(--muted); font-size: .75rem; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.mini td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.mini td.n { font-family: var(--f-num); text-align: right; font-variant-numeric: tabular-nums; }
+.mini th.n { text-align: right; }
+.mini tr:last-child td { border-bottom: 0; }
+.tablewrap { overflow-x: auto; }
+.pill { font-size: .7rem; padding: 1px 6px; border-radius: 4px; background: var(--gold-soft); color: var(--gold); font-weight: 700; }
+.empty { color: var(--muted); font-size: .9rem; padding: 6px 0; }
+details > summary { cursor: pointer; font-weight: 600; }
+footer { color: var(--muted); font-size: .8rem; line-height: 1.6; }
+@media (max-width: 520px) {
+  .slots { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  .slot.pick { grid-column: span 2; min-height: 52px; }
+  .slot.pre { grid-column: span 5; min-height: 38px; flex-direction: row; gap: 6px; }
+  h1 { font-size: 1.45rem; }
+}
+@media (prefers-reduced-motion: no-preference) { .slot, .hero { transition: border-color .15s, background-color .15s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>RTA 选人助手</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <div id="exampleBar" class="example" hidden>
+    <span>现在显示的是用数据生成的示例对局。点「清空」开始你自己的对局。</span>
+    <button class="btn" id="clearFromExample">清空</button>
+  </div>
+
+  <div class="cols">
+    <div class="left">
+      <section class="panel" aria-label="选人面板">
+        <div class="row spread">
+          <h2>对局</h2>
+          <div class="row">
+            <div class="seg" role="group" aria-label="谁先手">
+              <button id="firstMe" aria-pressed="true">我方先手</button>
+              <button id="firstFoe" aria-pressed="false">对方先手</button>
+            </div>
+            <button class="btn" id="reset">清空</button>
+          </div>
+        </div>
+        <div class="turn" id="turn"></div>
+        <div class="side me">
+          <div class="side-label">我方 <span class="note">预Ban ×2 · 选人 ×5</span></div>
+          <div class="slots" id="slotsMe"></div>
+        </div>
+        <div class="side foe">
+          <div class="side-label">对方 <span class="note">预Ban ×2 · 选人 ×5</span></div>
+          <div class="slots" id="slotsFoe"></div>
+        </div>
+        <div class="order" id="order"></div>
+        <p class="note">点一个格子，再点下面的角色填进去；填完会自动跳到下一个该填的格子。10 人选完后，可以在下面标记双方被 Ban 掉的角色。</p>
+        <div class="row" id="banRow" hidden></div>
+      </section>
+
+      <section class="panel" aria-label="角色列表">
+        <div class="row spread">
+          <h2 id="pickerTitle">角色</h2>
+          <div class="row">
+            <label class="chk"><input type="checkbox" id="rosterMode"> 只推荐我有的</label>
+            <button class="btn" id="editRoster" aria-pressed="false">编辑我的角色</button>
+          </div>
+        </div>
+        <input class="search" id="search" type="search" placeholder="搜中文或英文名，例如 黎洁特 / Lisette" autocomplete="off">
+        <p class="note" id="rosterHint" hidden>编辑模式：点角色标记「我有」，左边带蓝条的是已标记的。只保存在这个浏览器里。</p>
+        <div class="grid" id="grid"></div>
+      </section>
+    </div>
+
+    <div class="right">
+      <section class="panel" aria-live="polite">
+        <div class="row spread"><h2 id="recTitle">推荐</h2><span class="note" id="recNote"></span></div>
+        <div class="recs" id="recs"></div>
+      </section>
+      <section class="panel" id="foeGuess">
+        <div class="row spread"><h2>对方可能选</h2><span class="note">按热门程度为主，再看和对方阵容的搭配</span></div>
+        <div class="recs" id="foeRecs"></div>
+      </section>
+      <section class="panel" id="banPanel">
+        <h2>选完后 Ban 谁</h2>
+        <div id="banAdvice"></div>
+      </section>
+      <section class="panel">
+        <details id="preDetails">
+          <summary>预 Ban 参考</summary>
+          <div class="tablewrap" style="margin-top:10px"><table class="mini" id="preTable"></table></div>
+        </details>
+      </section>
+    </div>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const S = /*__STATS__*/null;
+(function () {
+  if (!S) { document.getElementById('meta').textContent = '还没有数据：先运行 stats.py 生成页面。'; return; }
+  const H = S.heroes, N = S.battles;
+  const JOB = { knight: '骑士', warrior: '战士', assassin: '刺客', ranger: '射手', mage: '魔导士', manauser: '精灵师' };
+  const byCode = new Map(H.map((h, i) => [h.code, i]));
+  const K = 150, KP = 60, MIN_REC = 100, FEW = 300;
+  const lg = p => Math.log(p / (1 - p)), sg = x => 1 / (1 + Math.exp(-x));
+  const base = H.map(h => (h.wins + K * 0.5) / (h.played + K));
+  const lb = base.map(lg);
+  const pairM = new Map(), vsM = new Map();
+  for (const [i, j, n, w] of S.pairs) { pairM.set(i * 4096 + j, [n, w]); pairM.set(j * 4096 + i, [n, w]); }
+  for (const [i, j, n, w] of S.vs) { vsM.set(i * 4096 + j, [n, w]); vsM.set(j * 4096 + i, [n, n - w]); }
+  const pct = (x, d = 1) => (x * 100).toFixed(d) + '%';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // ---------- storage (per-viewer convenience only) ----------
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem('e7draft.' + k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem('e7draft.' + k, JSON.stringify(v)); } catch {} },
+  };
+  let roster = new Set((store.get('roster') || []).filter(c => byCode.has(c)));
+  let rosterMode = !!store.get('rosterMode') && roster.size > 0;
+  let editing = false;
+
+  // ---------- draft state ----------
+  const blank = () => ({ first: 'me', pre: { me: [null, null], foe: [null, null] }, pick: { me: Array(5).fill(null), foe: Array(5).fill(null) }, ban: { me: null, foe: null }, example: false });
+  let D = store.get('draft');
+  if (!D || !D.pick) D = exampleDraft();
+  let active = null;
+
+  function exampleDraft() {
+    const d = blank(); d.example = true; d.first = 'me';
+    const byPre = H.map((h, i) => i).sort((a, b) => H[b].preban - H[a].preban);
+    d.pre.me = [byPre[0], byPre[2]]; d.pre.foe = [byPre[0], byPre[1]];
+    const used = new Set([...d.pre.me, ...d.pre.foe]);
+    const byFp = H.map((h, i) => i).filter(i => !used.has(i)).sort((a, b) => H[b].fp - H[a].fp);
+    d.pick.me[0] = byFp[0]; used.add(byFp[0]);
+    const pop = H.map((h, i) => i).filter(i => !used.has(i)).sort((a, b) => H[b].picked - H[a].picked);
+    d.pick.foe[0] = pop[0]; d.pick.foe[1] = pop[1];
+    return d;
+  }
+  const other = s => (s === 'me' ? 'foe' : 'me');
+  const filled = arr => arr.filter(x => x != null);
+  const usedSet = () => new Set([...filled(D.pre.me), ...filled(D.pre.foe), ...filled(D.pick.me), ...filled(D.pick.foe)]);
+  const prebanned = () => new Set([...filled(D.pre.me), ...filled(D.pre.foe)]);
+  function seq() { const f = D.first, s = other(f); return [f, s, s, f, f, s, s, f, f, s]; }
+  function nextTurn() {
+    let c = { me: filled(D.pick.me).length, foe: filled(D.pick.foe).length };
+    const q = seq();
+    for (let k = 0; k < q.length; k++) { const s = q[k]; if (c[s] > 0) c[s]--; else { let r = 1; while (q[k + r] === s) r++; return { k, side: s, left: r }; } }
+    return null;
+  }
+  function autoActive() {
+    for (const s of ['me', 'foe']) { const i = D.pre[s].indexOf(null); if (i >= 0) return { kind: 'pre', side: s, i }; }
+    const t = nextTurn();
+    if (t) return { kind: 'pick', side: t.side, i: D.pick[t.side].indexOf(null) };
+    return null;
+  }
+  function save() { store.set('draft', D); }
+
+  // ---------- model ----------
+  function lift(map, i, j) {
+    const r = map.get(i * 4096 + j); if (!r) return null;
+    const [n, w] = r; const p = (w + KP * base[i]) / (n + KP);
+    return { d: lg(p) - lb[i], n, raw: w / n };
+  }
+  function evalHero(i, mates, foes) {
+    let s = lb[i]; const why = [];
+    for (const m of mates) { const r = lift(pairM, i, m); if (r) { s += r.d; why.push({ t: 'syn', h: m, d: r.d, n: r.n }); } }
+    for (const e of foes) { const r = lift(vsM, i, e); if (r) { s += r.d; why.push({ t: 'vs', h: e, d: r.d, n: r.n }); } }
+    return { i, s, wr: sg(s), why };
+  }
+  const dp = (i, d) => sg(lb[i] + d) - base[i];
+  function chips(r, maxN = 3) {
+    const top = r.why.filter(w => Math.abs(dp(r.i, w.d)) >= 0.005).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, maxN);
+    return top.map(w => {
+      const v = dp(r.i, w.d), nm = H[w.h].zh, sign = v > 0 ? '+' : '';
+      const label = w.t === 'syn' ? `配 ${nm}` : (v > 0 ? `克 ${nm}` : `怕 ${nm}`);
+      return `<span class="chip ${v > 0 ? 'up' : 'down'}" title="${w.n} 场">${esc(label)} ${sign}${pct(v)}</span>`;
+    }).join('');
+  }
+  // For our side: best estimated win rate. For the enemy: what they are most likely to take,
+  // so popularity leads and fit with their draft breaks ties.
+  function recommend(side, count) {
+    const used = usedSet(), mates = filled(D.pick[side]), foes = filled(D.pick[other(side)]);
+    let pool = H.map((h, i) => i).filter(i => !used.has(i) && H[i].played >= MIN_REC);
+    if (side === 'me' && rosterMode && roster.size) pool = pool.filter(i => roster.has(H[i].code));
+    const key = side === 'me' ? r => r.s : r => Math.log(H[r.i].picked / N + 0.005) + 4 * r.s;
+    return pool.map(i => evalHero(i, mates, foes)).sort((a, b) => key(b) - key(a)).slice(0, count);
+  }
+
+  // ---------- render ----------
+  function heroLabel(i) { const h = H[i]; return `<span class="dot el-${h.el}"></span>${esc(h.zh)}`; }
+  function renderBoard() {
+    for (const s of ['me', 'foe']) {
+      const el = $(s === 'me' ? 'slotsMe' : 'slotsFoe');
+      const cells = [];
+      D.pre[s].forEach((v, i) => cells.push(slotHtml('pre', s, i, v, `预Ban ${i + 1}`)));
+      D.pick[s].forEach((v, i) => cells.push(slotHtml('pick', s, i, v, `第${i + 1}手`)));
+      el.innerHTML = cells.join('');
+    }
+    $('firstMe').setAttribute('aria-pressed', D.first === 'me');
+    $('firstFoe').setAttribute('aria-pressed', D.first === 'foe');
+    const t = nextTurn(), preLeft = 4 - filled(D.pre.me).length - filled(D.pre.foe).length;
+    let msg;
+    if (preLeft > 0) msg = `先填预 Ban：还差 <b>${preLeft}</b> 个。`;
+    else if (t) msg = `轮到 <b class="${t.side}">${t.side === 'me' ? '我方' : '对方'}</b> 选 <b>${t.left}</b> 个。`;
+    else if (D.ban.me == null || D.ban.foe == null) msg = '10 人选完。在下面标记双方选完后 Ban 掉的角色，或者直接看右边的 Ban 人建议。';
+    else msg = '选人结束。祝你好运。';
+    $('turn').innerHTML = msg;
+    const q = seq(); const parts = [];
+    let k = 0;
+    while (k < q.length) { const s = q[k]; let r = 1; while (q[k + r] === s) r++; parts.push({ s, r, k }); k += r; }
+    const tt = t ? t.k : -1;
+    $('order').innerHTML = '选人顺序 ' + parts.map(p => `<span class="${p.s}${tt >= p.k && tt < p.k + p.r ? ' now' : ''}">${p.s === 'me' ? '我' : '敌'}${p.r}</span>`).join(' → ');
+    // ban marking row
+    const full = filled(D.pick.me).length === 5 && filled(D.pick.foe).length === 5;
+    $('banRow').hidden = !full;
+    if (full) {
+      $('banRow').innerHTML = '<span class="note">选完后被 Ban：</span>' +
+        ['me', 'foe'].map(s => `<label class="chk">${s === 'me' ? '我方被 Ban' : '对方被 Ban'} <select id="ban-${s}" class="btn">${['<option value="">未定</option>', ...D.pick[s].map(i => `<option value="${i}"${D.ban[s] === i ? ' selected' : ''}>${esc(H[i].zh)}</option>`)].join('')}</select></label>`).join('');
+      for (const s of ['me', 'foe']) $('ban-' + s).onchange = e => { D.ban[s] = e.target.value === '' ? null : +e.target.value; save(); render(); };
+    }
+    $('exampleBar').hidden = !D.example;
+  }
+  function slotHtml(kind, side, i, v, tag) {
+    const isActive = active && active.kind === kind && active.side === side && active.i === i;
+    const cls = ['slot', kind, v != null ? 'filled' : '', isActive ? 'active' : '', kind === 'pick' && v != null && D.ban[side] === v ? 'banned' : ''].join(' ');
+    const body = v != null ? `<span class="nm">${esc(H[v].zh)}</span>` : `<span class="nm" style="color:var(--muted)">＋</span>`;
+    return `<button class="${cls}" data-kind="${kind}" data-side="${side}" data-i="${i}" aria-label="${side === 'me' ? '我方' : '对方'}${tag}"><span class="tag">${tag}</span>${body}${v != null ? `<span class="x" data-clear="1" aria-label="移除">×</span>` : ''}</button>`;
+  }
+
+  function renderGrid() {
+    const q = $('search').value.trim().toLowerCase();
+    const used = usedSet();
+    let list = H.map((h, i) => i);
+    if (q) list = list.filter(i => H[i].zh.toLowerCase().includes(q) || H[i].en.toLowerCase().includes(q));
+    if (!editing && rosterMode && roster.size && active && active.kind === 'pick' && active.side === 'me' && !q) list = list.filter(i => roster.has(H[i].code));
+    $('grid').innerHTML = list.map(i => {
+      const h = H[i], owned = roster.has(h.code);
+      const dis = !editing && used.has(i);
+      return `<button class="hero${owned ? ' owned' : ''}" data-h="${i}" ${dis ? 'disabled' : ''} ${editing ? `aria-pressed="${owned}"` : ''}>
+        <span class="nm"><span class="dot el-${h.el}"></span>${esc(h.zh)}</span>
+        <span class="en">${esc(h.en)} · ${JOB[h.job] || ''}</span>
+        <span class="st">胜 ${pct(h.played ? h.wins / h.played : 0, 0)} · 出场 ${pct(h.picked / N, 0)}</span></button>`;
+    }).join('') || '<p class="empty">没有找到这个角色。</p>';
+    $('pickerTitle').textContent = editing ? `我的角色（已标记 ${roster.size} 个）` : (active ? `选择：${active.side === 'me' ? '我方' : '对方'}${active.kind === 'pre' ? '预Ban' : '第' + (active.i + 1) + '手'}` : '角色');
+    $('rosterHint').hidden = !editing;
+    $('editRoster').textContent = editing ? '完成' : '编辑我的角色';
+    $('editRoster').setAttribute('aria-pressed', editing);
+    $('rosterMode').checked = rosterMode;
+    $('rosterMode').disabled = roster.size === 0;
+  }
+
+  function recRow(r, rank, side) {
+    const h = H[r.i];
+    return `<div class="rec"><span class="rk">${rank}</span>
+      <div class="who"><div class="nm">${heroLabel(r.i)} <span class="en">${esc(h.en)}</span></div>
+        <div class="why"><span class="chip info">单体胜率 ${pct(h.played ? h.wins / h.played : 0)} · ${h.played} 场</span>${h.played < FEW ? '<span class="chip info">样本少</span>' : ''}${side === 'foe' ? `<span class="chip info">出场 ${pct(h.picked / N, 0)}</span>` : ''}${chips(r)}</div></div>
+      <div class="wr">${pct(r.wr)}<small>估计胜率</small></div></div>`;
+  }
+  function renderRecs() {
+    const t = nextTurn(), preDone = filled(D.pre.me).length + filled(D.pre.foe).length === 4;
+    const mySide = 'me';
+    const myLeft = 5 - filled(D.pick.me).length, foeLeft = 5 - filled(D.pick.foe).length;
+    if (myLeft > 0) {
+      const recs = recommend(mySide, 8);
+      $('recTitle').textContent = '我方下一手推荐';
+      $('recNote').textContent = rosterMode ? '只看我有的角色' : '所有角色';
+      $('recs').innerHTML = recs.map((r, k) => recRow(r, k + 1, mySide)).join('') || '<p class="empty">没有可选的角色。如果开了「只推荐我有的」，先在角色列表里标记你有的角色。</p>';
+    } else {
+      $('recTitle').textContent = '我方 5 人已选完';
+      $('recNote').textContent = '';
+      $('recs').innerHTML = '<p class="empty">看下面的 Ban 人建议。</p>';
+    }
+    $('foeGuess').hidden = foeLeft === 0;
+    if (foeLeft > 0) $('foeRecs').innerHTML = recommend('foe', 5).map((r, k) => recRow(r, k + 1, 'foe')).join('');
+
+    // post-ban advice
+    const me = filled(D.pick.me), foe = filled(D.pick.foe);
+    if (!foe.length) { $('banAdvice').innerHTML = '<p class="empty">对方选了角色后，这里会按「对你阵容的威胁」排序。</p>'; }
+    else {
+      const threat = foe.map(e => evalHero(e, foe.filter(x => x !== e), me)).sort((a, b) => b.s - a.s);
+      const risk = me.map(m => evalHero(m, me.filter(x => x !== m), foe)).sort((a, b) => b.s - a.s);
+      const table = (rows, title, hint) => `<p class="note" style="margin:0 0 4px">${title}</p><div class="tablewrap"><table class="mini"><thead><tr><th>角色</th><th class="n">估计胜率</th><th class="n">平时被Ban</th><th>原因</th></tr></thead><tbody>` +
+        rows.map((r, k) => `<tr><td>${k === 0 ? '<span class="pill">' + hint + '</span> ' : ''}${heroLabel(r.i)}</td><td class="n">${pct(r.wr)}</td><td class="n">${pct(H[r.i].picked ? H[r.i].postban / H[r.i].picked : 0, 0)}</td><td><div class="why" style="margin:0">${chips(r, 2)}</div></td></tr>`).join('') + '</tbody></table></div>';
+      $('banAdvice').innerHTML = table(threat, '对方的角色，威胁从高到低（Ban 第一个最划算）', '建议Ban') +
+        (me.length ? '<div style="height:12px"></div>' + table(risk, '你的角色，对方最可能 Ban 的排前面（准备好它被 Ban 后的打法）', '最危险') : '');
+    }
+  }
+  function renderPre() {
+    const rows = H.map((h, i) => i).sort((a, b) => H[b].preban - H[a].preban).slice(0, 12);
+    const fp = H.map((h, i) => i).sort((a, b) => H[b].fp - H[a].fp).slice(0, 6);
+    $('preTable').innerHTML = `<thead><tr><th>常被预 Ban</th><th class="n">预Ban率</th><th class="n">选上后胜率</th></tr></thead><tbody>` +
+      rows.map(i => `<tr><td>${heroLabel(i)}</td><td class="n">${pct(H[i].preban / N)}</td><td class="n">${H[i].played ? pct(H[i].wins / H[i].played) : '–'}</td></tr>`).join('') +
+      `</tbody><thead><tr><th>常见先手第一手</th><th class="n">先手首选率</th><th class="n">胜率</th></tr></thead><tbody>` +
+      fp.map(i => `<tr><td>${heroLabel(i)}</td><td class="n">${pct(H[i].fp / N)}</td><td class="n">${H[i].fp ? pct(H[i].fpWins / H[i].fp) : '–'}</td></tr>`).join('') + '</tbody>';
+    const preDone = filled(D.pre.me).length + filled(D.pre.foe).length === 4;
+    if (!preDone && !renderPre.opened) { $('preDetails').open = true; renderPre.opened = true; }
+  }
+  function render() { renderBoard(); renderGrid(); renderRecs(); renderPre(); }
+
+  // ---------- events ----------
+  function startReal() { if (D.example) { D = blank(); D.first = $('firstFoe').getAttribute('aria-pressed') === 'true' ? 'foe' : 'me'; } }
+  document.addEventListener('click', e => {
+    const slot = e.target.closest('.slot');
+    if (slot) {
+      const kind = slot.dataset.kind, side = slot.dataset.side, i = +slot.dataset.i;
+      if (e.target.dataset.clear) { D[kind][side][i] = null; if (kind === 'pick') { for (const s of ['me', 'foe']) if (!D.pick[s].includes(D.ban[s])) D.ban[s] = null; } D.example = false; save(); active = { kind, side, i }; render(); return; }
+      active = { kind, side, i }; render(); $('search').focus({ preventScroll: true }); return;
+    }
+    const hb = e.target.closest('.hero');
+    if (hb && !hb.disabled) {
+      const i = +hb.dataset.h;
+      if (editing) { const c = H[i].code; roster.has(c) ? roster.delete(c) : roster.add(c); store.set('roster', [...roster]); if (!roster.size) rosterMode = false; renderGrid(); renderRecs(); return; }
+      if (D.example) { const a = active; D = blank(); active = a || autoActive(); }
+      if (!active) active = autoActive();
+      if (!active) return;
+      D[active.kind][active.side][active.i] = i; D.example = false; save();
+      active = autoActive(); $('search').value = ''; render(); return;
+    }
+  });
+  $('firstMe').onclick = () => { D.first = 'me'; save(); active = autoActive(); render(); };
+  $('firstFoe').onclick = () => { D.first = 'foe'; save(); active = autoActive(); render(); };
+  const clearAll = () => { const f = D.example ? 'me' : D.first; D = blank(); D.first = f; save(); active = autoActive(); render(); };
+  $('reset').onclick = clearAll;
+  $('clearFromExample').onclick = clearAll;
+  $('search').addEventListener('input', renderGrid);
+  $('search').addEventListener('keydown', e => { if (e.key === 'Enter') { const b = $('grid').querySelector('.hero:not(:disabled)'); if (b) b.click(); } });
+  $('editRoster').onclick = () => { editing = !editing; renderGrid(); };
+  $('rosterMode').onchange = e => { rosterMode = e.target.checked && roster.size > 0; store.set('rosterMode', rosterMode); render(); };
+
+  // ---------- header / footer ----------
+  const grade = S.minGrade.charAt(0).toUpperCase() + S.minGrade.slice(1);
+  $('meta').innerHTML = `<b>${N.toLocaleString()}</b> 场对局 · 双方都在 ${esc(grade)} 段以上 · <b>${S.from}</b> 至 <b>${S.to}</b>`;
+  $('foot').innerHTML = `数据来自 Smilegate 官方对局记录接口（非官方用法），从高段位玩家的最近 100 场对局里收集，不是全服数据。
+    「估计胜率」= 角色本身胜率，再加上与己方每个角色的搭配、对敌方每个角色的克制修正；样本少的组合会被拉回平均值。这是粗略参考，不是保证。
+    角色的配装和练度对胜负影响很大，这里看不到。`;
+
+  active = D.example ? null : autoActive();
+  render();
+})();
+</script>

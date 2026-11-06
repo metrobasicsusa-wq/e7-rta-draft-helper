@@ -1,0 +1,6 @@
+# Raw battle data (other players' IDs, large) and files the scripts regenerate
+e7.db
+heroes.json
+stats.json
+crawl.log
+__pycache__/
